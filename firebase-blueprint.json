@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user's unique ID." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "role": { "type": "string", "enum": ["user", "admin", "premium"], "description": "The user's role." },
+        "credits": { "type": "number", "description": "Number of scans remaining." },
+        "api_usage": { "type": "number", "description": "Total API usage by the user." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
+      },
+      "required": ["uid", "email", "role", "credits", "createdAt"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "A user's subscription.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "description": "The user's unique ID." },
+        "plan": { "type": "string", "enum": ["basic", "pro"], "description": "The subscription plan." },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "The subscription status." },
+        "renewal_date": { "type": "string", "format": "date-time", "description": "When the subscription renews." }
+      },
+      "required": ["user_id", "plan", "status", "renewal_date"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "A system setting.",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "The setting key." },
+        "value": { "type": "string", "description": "The setting value." }
+      },
+      "required": ["key", "value"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "An admin task.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The task title." },
+        "status": { "type": "string", "enum": ["pending", "completed"], "description": "The task status." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the task was created." }
+      },
+      "required": ["title", "status", "createdAt"]
+    },
+    "Search": {
+      "title": "Search",
+      "description": "A search performed by a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user who performed the search." },
+        "query": { "type": "string", "description": "The search query (name, phone, ID)." },
+        "hasImage": { "type": "boolean", "description": "Whether an image was uploaded." },
+        "thumbnail": { "type": "string", "description": "Base64 thumbnail of the uploaded image." },
+        "trustScore": { "type": "number", "description": "The trust score returned by the AI." },
+        "redFlags": { "type": "array", "items": { "type": "string" }, "description": "List of red flags." },
+        "greenFlags": { "type": "array", "items": { "type": "string" }, "description": "List of green flags." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the search was performed." }
+      },
+      "required": ["userId", "query", "trustScore", "redFlags", "greenFlags", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A scam report submitted by a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user who submitted the report." },
+        "scammerName": { "type": "string", "description": "The reported scammer's name." },
+        "scammerDetails": { "type": "string", "description": "Other details like phone number, GCash number, etc." },
+        "description": { "type": "string", "description": "Description of the scam." },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "blacklisted"], "description": "Status of the report." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the report was submitted." }
+      },
+      "required": ["userId", "scammerName", "scammerDetails", "description", "status", "createdAt"]
+    },
+    "BlacklistEntry": {
+      "title": "BlacklistEntry",
+      "description": "An entry in the global blacklist.",
+      "type": "object",
+      "properties": {
+        "identifier": { "type": "string", "description": "The identifier (name, phone, ID) that is blacklisted." },
+        "reason": { "type": "string", "description": "Reason for blacklisting." },
+        "addedBy": { "type": "string", "description": "Admin UID who added the entry." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the entry was added." }
+      },
+      "required": ["identifier", "reason", "addedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/searches/{searchId}": {
+      "schema": { "$ref": "#/entities/Search" },
+      "description": "Stores search history."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Stores scam reports."
+    },
+    "/blacklist/{entryId}": {
+      "schema": { "$ref": "#/entities/BlacklistEntry" },
+      "description": "Stores global blacklist entries."
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": { "$ref": "#/entities/Subscription" },
+      "description": "Stores user subscriptions."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Setting" },
+      "description": "Stores system settings."
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Stores admin tasks."
+    }
+  }
+}

@@ -1,0 +1,201 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required) - The user's unique ID.
+    //   - email: string (required) - The user's email address.
+    //   - role: string (required) - The user's role ('user', 'admin', or 'premium').
+    //   - credits: number (required) - Number of scans remaining.
+    //   - createdAt: string (required) - When the user was created.
+    //
+    // Collection: searches
+    // Document ID: {searchId}
+    // Fields:
+    //   - userId: string (required) - The ID of the user who performed the search.
+    //   - query: string (required) - The search query (name, phone, ID).
+    //   - hasImage: boolean (optional) - Whether an image was uploaded.
+    //   - thumbnail: string (optional) - Base64 thumbnail of the uploaded image.
+    //   - trustScore: number (required) - The trust score returned by the AI.
+    //   - redFlags: list (required) - List of red flags.
+    //   - greenFlags: list (required) - List of green flags.
+    //   - createdAt: string (required) - When the search was performed.
+    //
+    // Collection: reports
+    // Document ID: {reportId}
+    // Fields:
+    //   - userId: string (required) - The ID of the user who submitted the report.
+    //   - scammerName: string (required) - The reported scammer's name.
+    //   - scammerDetails: string (required) - Other details like phone number, GCash number, etc.
+    //   - description: string (required) - Description of the scam.
+    //   - status: string (required) - Status of the report ('pending', 'reviewed', 'blacklisted').
+    //   - createdAt: string (required) - When the report was submitted.
+    //
+    // Collection: blacklist
+    // Document ID: {entryId}
+    // Fields:
+    //   - identifier: string (required) - The identifier (name, phone, ID) that is blacklisted.
+    //   - reason: string (required) - Reason for blacklisting.
+    //   - addedBy: string (required) - Admin UID who added the entry.
+    //   - createdAt: string (required) - When the entry was added.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (((request.auth.token.email == "cerezvincent1@gmail.com" || request.auth.token.email == "paoloesteban75@gmail.com") && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'credits', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 150 &&
+             data.role in ['user', 'admin', 'premium'] &&
+             data.credits is number && data.credits >= 0 &&
+             (!('api_usage' in data) || (data.api_usage is number && data.api_usage >= 0)) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidSubscription(data) {
+      return data.keys().hasOnly(['user_id', 'plan', 'status', 'renewal_date']) &&
+             data.user_id is string && data.user_id.size() > 0 && data.user_id.size() < 100 &&
+             data.plan in ['basic', 'pro'] &&
+             data.status in ['active', 'inactive'] &&
+             isValidDateString(data.renewal_date);
+    }
+
+    function isValidSetting(data) {
+      return data.keys().hasOnly(['key', 'value']) &&
+             data.key is string && data.key.size() > 0 && data.key.size() < 100 &&
+             data.value is string && data.value.size() < 5000;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasOnly(['title', 'status', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.status in ['pending', 'completed'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidSearch(data) {
+      return data.keys().hasAll(['userId', 'query', 'trustScore', 'redFlags', 'greenFlags', 'createdAt']) &&
+             data.keys().hasOnly(['userId', 'query', 'hasImage', 'thumbnail', 'backThumbnail', 'idType', 'reasoning', 'trustScore', 'redFlags', 'greenFlags', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.query is string && data.query.size() <= 500 &&
+             (!('hasImage' in data) || data.hasImage is bool) &&
+             (!('thumbnail' in data) || (data.thumbnail is string && data.thumbnail.size() < 1048576)) &&
+             (!('backThumbnail' in data) || (data.backThumbnail is string && data.backThumbnail.size() < 1048576)) &&
+             (!('idType' in data) || (data.idType is string && data.idType.size() < 200)) &&
+             (!('reasoning' in data) || (data.reasoning is string && data.reasoning.size() < 5000)) &&
+             data.trustScore is number && data.trustScore >= 1 && data.trustScore <= 10 &&
+             data.redFlags is list && data.redFlags.size() <= 20 &&
+             data.greenFlags is list && data.greenFlags.size() <= 20 &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasOnly(['userId', 'scammerName', 'scammerDetails', 'description', 'status', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.scammerName is string && data.scammerName.size() > 0 && data.scammerName.size() < 200 &&
+             data.scammerDetails is string && data.scammerDetails.size() < 500 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 2000 &&
+             data.status in ['pending', 'reviewed', 'blacklisted'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidBlacklistEntry(data) {
+      return data.keys().hasOnly(['identifier', 'reason', 'addedBy', 'createdAt']) &&
+             data.identifier is string && data.identifier.size() > 0 && data.identifier.size() < 200 &&
+             data.reason is string && data.reason.size() > 0 && data.reason.size() < 1000 &&
+             data.addedBy is string && data.addedBy.size() > 0 && data.addedBy.size() < 100 &&
+             isValidDateString(data.createdAt);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) &&
+                    request.resource.data.uid == userId &&
+                    ((request.resource.data.role == 'user' || request.resource.data.role == 'premium') || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
+                    ((isOwner(userId) && request.resource.data.role == resource.data.role && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.email == resource.data.email && request.resource.data.credits <= resource.data.credits && (!('api_usage' in request.resource.data) || !('api_usage' in resource.data) || request.resource.data.api_usage >= resource.data.api_usage)) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /searches/{searchId} {
+      allow get: if true; // Allow public read for sharing links
+      allow list: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() && isValidSearch(request.resource.data) && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin() && isValidSearch(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() && isValidReport(request.resource.data) && (request.resource.data.userId == request.auth.uid || isAdmin()) && request.resource.data.status == 'pending';
+      allow update: if isAdmin() && isValidReport(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /blacklist/{entryId} {
+      allow read: if true; // Publicly readable to check if someone is blacklisted
+      allow create: if isAdmin() && isValidBlacklistEntry(request.resource.data) && request.resource.data.addedBy == request.auth.uid;
+      allow update: if isAdmin() && isValidBlacklistEntry(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == resource.data.user_id);
+      allow create: if isAdmin() && isValidSubscription(request.resource.data);
+      allow update: if isAdmin() && isValidSubscription(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true; // Publicly readable for app configuration
+      allow create: if isAdmin() && isValidSetting(request.resource.data);
+      allow update: if isAdmin() && isValidSetting(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidTask(request.resource.data);
+      allow update: if isAdmin() && isValidTask(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}
