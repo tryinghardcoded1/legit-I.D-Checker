@@ -33,7 +33,7 @@ export const detectIdType = async (imageBase64: string): Promise<string | null> 
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-preview',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { text: 'Identify this ID type.' },
