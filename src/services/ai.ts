@@ -1,6 +1,20 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+      // We still initialize it so it doesn't crash the whole app, but API calls will fail later.
+      // Or we can throw an error here, which will be caught by the try-catch in the functions.
+      throw new Error("GEMINI_API_KEY is missing. Please set it in your Vercel Environment Variables.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+};
 
 export interface ScamAnalysisResult {
   trustScore: number;
@@ -17,6 +31,7 @@ export const detectIdType = async (imageBase64: string): Promise<string | null> 
   const base64Data = imageBase64.split(',')[1];
 
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-flash-preview',
       contents: {
@@ -106,6 +121,7 @@ IMPORTANT: You MUST provide the "Red Flags", "Green Flags", and "Reasoning" in $
     });
   }
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3.1-pro-preview',
     contents: { parts },
